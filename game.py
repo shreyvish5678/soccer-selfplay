@@ -309,7 +309,7 @@ class SoccerGameEnv:
         speed = torch.norm(vel, dim=1, keepdim=True) # compute speeds
 
         over_limit = speed > max_speed # boolean tensor indicating which environments exceed max speed
-        vel = torch.where(over_limit, (vel / speed) * max_speed, vel) # clamp velocities to max speed, similar to ball speed clamping
+        vel[:] = torch.where(over_limit, (vel / speed) * max_speed, vel) # clamp velocities to max speed, similar to ball speed clamping
 
         # boolean tensor indicating which environments have no x acceleration for given player
         no_acc_x = (acc[:, 0:1] == 0) # shape: (num_envs, 1)

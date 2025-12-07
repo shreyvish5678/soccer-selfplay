@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soccer Physics AI Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="menu">
+        <h1>Soccer Physics AI</h1>
+        <div class="player-select">
+            <div>
+                <h2>Left Player (Red)</h2>
+                <label><input type="radio" name="p1" value="human" checked> Human (WASD)</label><br>
+                <label><input type="radio" name="p1" value="ai"> AI</label>
+            </div>
+            <div>
+                <h2>Right Player (Blue)</h2>
+                <label><input type="radio" name="p2" value="human"> Human (Arrows)</label><br>
+                <label><input type="radio" name="p2" value="ai" checked> AI</label>
+            </div>
+        </div>
+        <button id="play-btn">Play</button>
+    </div>
+
+    <div id="game-container" class="hidden">
+        <canvas id="game-canvas" width="600" height="400"></canvas>
+        <div id="score">0 - 0</div>
+        <button id="back-btn">Back to Menu</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

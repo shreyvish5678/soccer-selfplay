@@ -71,7 +71,7 @@ def main():
     
     # initialize the environment
     print(f"\nInitializing Game on {device}...")
-    env = SoccerGameEnv(num_envs=1, render=True, max_steps=MAX_STEPS, device=device)
+    env = SoccerGameEnv(num_envs=1, render=True, max_steps=MAX_STEPS, device=device, stagnation_on=False)
     
     # initialize the agents based on parameters
     p1_agent = None

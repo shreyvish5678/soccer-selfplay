@@ -2,11 +2,12 @@ import torch
 import pygame
 
 class SoccerGameEnv:
-    def __init__(self, num_envs=1000, render=False, max_steps=2000, device="cpu"):
+    def __init__(self, num_envs=1000, render=False, max_steps=2000, device="cpu", stagnation_on=True):
         self.num_envs = num_envs # number of parallel environments
         self.render_mode = render # whether to render the game with pygame
         self.max_steps = max_steps # number of maximum updates
         self.device = device 
+        self.stagnation_on = stagnation_on # whether to enable stagnation detection and reset, only keep for training
 
         self.WIDTH = 600 # field width
         self.HEIGHT = 400 # field height
@@ -277,7 +278,7 @@ class SoccerGameEnv:
         self.stagnation_steps[~is_stagnant] = 0 # reset stagnation count for non-stagnant environments
 
         stuck_mask_env_ids = self.stagnation_steps > self.STAGNATION_THRESHOLD # environments that are stuck, shape: (num_envs,) boolean tensor
-        if stuck_mask_env_ids.any():
+        if stuck_mask_env_ids.any() and self.stagnation_on:
             self.reset_positions(stuck_mask_env_ids) # reset positions for stuck environments
 
         self.current_step += 1 # increment current step count for all environments
@@ -569,10 +570,10 @@ class SoccerGameEnv:
         pygame.draw.circle(self.screen, (255, 255, 255), (self.WIDTH // 2, self.HEIGHT // 2), 70, 5) # draw center circle
 
         # draw corner circles to visualize corner repulsion areas
-        pygame.draw.circle(self.screen, (255, 255, 0), (0, 0), self.CORNER_RADIUS, 2) # top-left corner
-        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, 0), self.CORNER_RADIUS, 2) # top-right corner  
-        pygame.draw.circle(self.screen, (255, 255, 0), (0, self.HEIGHT), self.CORNER_RADIUS, 2) # bottom-left corner
-        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, self.HEIGHT), self.CORNER_RADIUS, 2) # bottom-right corner
+        pygame.draw.circle(self.screen, (255, 255, 0), (0, 0), self.CORNER_RADIUS // 2, 2) # top-left corner
+        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, 0), self.CORNER_RADIUS // 2, 2) # top-right corner  
+        pygame.draw.circle(self.screen, (255, 255, 0), (0, self.HEIGHT), self.CORNER_RADIUS // 2, 2) # bottom-left corner
+        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, self.HEIGHT), self.CORNER_RADIUS // 2, 2) # bottom-right corner
 
         pygame.draw.circle(self.screen, (200, 0, 0), p1, self.PLAYER_SIZE) # draw player 1 as red circle
         pygame.draw.circle(self.screen, (0, 0, 200), p2, self.PLAYER_SIZE) # draw player 2 as blue circles

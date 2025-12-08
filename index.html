@@ -3,34 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soccer Physics AI Demo</title>
+    <title>Soccer Physics AI - Web Demo</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="menu">
-        <h1>Soccer Physics AI</h1>
-        <div class="player-select">
-            <div>
-                <h2>Left Player (Red)</h2>
-                <label><input type="radio" name="p1" value="human" checked> Human (WASD)</label><br>
-                <label><input type="radio" name="p1" value="ai"> AI</label>
+    <div id="menu-screen">
+        <div class="menu-container">
+            <h1>Soccer Physics AI</h1>
+            <p class="subtitle">Self-Play PPO Training Demo</p>
+            
+            <div class="player-config">
+                <div class="player-section">
+                    <h2>Player 1 (Red)</h2>
+                    <div class="control-options">
+                        <label>
+                            <input type="radio" name="player1" value="AI" checked>
+                            AI
+                        </label>
+                        <label>
+                            <input type="radio" name="player1" value="HUMAN">
+                            Human (WASD)
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="player-section">
+                    <h2>Player 2 (Blue)</h2>
+                    <div class="control-options">
+                        <label>
+                            <input type="radio" name="player2" value="AI" checked>
+                            AI
+                        </label>
+                        <label>
+                            <input type="radio" name="player2" value="HUMAN">
+                            Human (Arrow Keys)
+                        </label>
+                    </div>
+                </div>
             </div>
-            <div>
-                <h2>Right Player (Blue)</h2>
-                <label><input type="radio" name="p2" value="human"> Human (Arrows)</label><br>
-                <label><input type="radio" name="p2" value="ai" checked> AI</label>
+            
+            <button id="start-button" class="start-btn">Start Game</button>
+            
+            <div class="info">
+                <p><strong>Controls:</strong></p>
+                <p>Player 1: W/A/S/D keys</p>
+                <p>Player 2: Arrow keys</p>
+                <p>ESC: Return to menu</p>
             </div>
         </div>
-        <button id="play-btn">Play</button>
     </div>
-
-    <div id="game-container" class="hidden">
-        <canvas id="game-canvas" width="600" height="400"></canvas>
-        <div id="score">0 - 0</div>
-        <button id="back-btn">Back to Menu</button>
+    
+    <div id="game-screen" style="display: none;">
+        <div class="game-container">
+            <canvas id="game-canvas"></canvas>
+            <div class="score-display">
+                <span id="score-p1">0</span>
+                <span class="score-separator">-</span>
+                <span id="score-p2">0</span>
+            </div>
+            <button id="back-button" class="back-btn">Back to Menu</button>
+        </div>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script src="game.js"></script>
 </body>
 </html>

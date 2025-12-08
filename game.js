@@ -24,270 +24,313 @@ const BALL_MASS = 1.0;
 const CORNER_RADIUS = 30.0;
 const CORNER_FORCE = 1.5;
 
-const SIZE = Math.sqrt(WIDTH * WIDTH + HEIGHT * HEIGHT);
+const SIZE = Math.sqrt(WIDTH ** 2 + HEIGHT ** 2);
+const MAX_STEPS = 5000;
 
-const actionVectors = [
-    [0, 0],
-    [0, -1], [0, 1], [-1, 0], [1, 0],
-    [-1, -1], [1, -1], [-1, 1], [1, 1]
+const ACTION_VECTORS = [
+    [0, 0],   
+    [0, -1],  
+    [0, 1],  
+    [-1, 0], 
+    [1, 0],  
+    [-1, -1],
+    [1, -1],
+    [-1, 1],  
+    [1, 1], 
 ].map(v => [v[0] * PLAYER_ACCELERATION, v[1] * PLAYER_ACCELERATION]);
 
-let canvas, ctx;
-let p1Type, p2Type;
-let session = null;
-let keys = {};
-
-let p1Pos = [OFFSET, HEIGHT / 2];
-let p2Pos = [WIDTH - OFFSET, HEIGHT / 2];
-let ballPos = [WIDTH / 2, HEIGHT / 2];
-let p1Vel = [0, 0];
-let p2Vel = [0, 0];
+let player1Pos = [0, 0];
+let player2Pos = [0, 0];
+let ballPos = [0, 0];
+let player1Vel = [0, 0];
+let player2Vel = [0, 0];
 let ballVel = [0, 0];
-
 let scoreP1 = 0;
 let scoreP2 = 0;
+let currentStep = 0;
 
-let prevDistP1 = null;
-let prevDistP2 = null;
-let prevBallDistLeft = null;
-let prevBallDistRight = null;
+let session = null;
+let player1Type = 'AI';
+let player2Type = 'AI';
 
-document.getElementById('play-btn').addEventListener('click', startGame);
-document.getElementById('back-btn').addEventListener('click', () => location.reload());
+let canvas, ctx;
+let animationId = null;
 
-window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+const keys = {};
 
-async function startGame() {
-    p1Type = document.querySelector('input[name="p1"]:checked').value;
-    p2Type = document.querySelector('input[name="p2"]:checked').value;
-
-    document.getElementById('menu').classList.add('hidden');
-    document.getElementById('game-container').classList.remove('hidden');
-
-    canvas = document.getElementById('game-canvas');
-    ctx = canvas.getContext('2d');
-
+async function init() {
     try {
-        session = await ort.InferenceSession.create('./soccer_ai.onnx', {
-            executionProviders: ['wasm', 'webgl']
-        });
+        session = await ort.InferenceSession.create('soccer_ai.onnx');
+        console.log('Model loaded successfully');
     } catch (e) {
-        alert("Failed to load AI model. Check console.");
-        console.error(e);
+        console.error('Failed to load model:', e);
+        alert('Failed to load AI model. Please ensure soccer_ai.onnx is in the web_demo folder.');
     }
+    
+    document.getElementById('start-button').addEventListener('click', startGame);
+    document.getElementById('back-button').addEventListener('click', backToMenu);
+    
+    window.addEventListener('keydown', e => {
+        keys[e.key.toLowerCase()] = true;
+        if (e.key === 'Escape') backToMenu();
+    });
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+}
 
+function startGame() {
+    player1Type = document.querySelector('input[name="player1"]:checked').value;
+    player2Type = document.querySelector('input[name="player2"]:checked').value;
+    
+    canvas = document.getElementById('game-canvas');
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    ctx = canvas.getContext('2d');
+    
+    document.getElementById('menu-screen').style.display = 'none';
+    document.getElementById('game-screen').style.display = 'flex';
+    
     resetGame();
-    requestAnimationFrame(gameLoop);
+    
+    gameLoop();
+}
+
+function backToMenu() {
+    if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+    }
+    document.getElementById('game-screen').style.display = 'none';
+    document.getElementById('menu-screen').style.display = 'flex';
 }
 
 function resetGame() {
-    p1Pos = [OFFSET, HEIGHT / 2];
-    p2Pos = [WIDTH - OFFSET, HEIGHT / 2];
+    resetPositions();
+    scoreP1 = 0;
+    scoreP2 = 0;
+    currentStep = 0;
+    updateScoreDisplay();
+}
+
+function resetPositions() {
+    player1Pos = [OFFSET, HEIGHT / 2];
+    player2Pos = [WIDTH - OFFSET, HEIGHT / 2];
     ballPos = [WIDTH / 2, HEIGHT / 2];
-    p1Vel = [0, 0];
-    p2Vel = [0, 0];
+    player1Vel = [0, 0];
+    player2Vel = [0, 0];
     ballVel = [0, 0];
-
-    const ballToP1 = distance(ballPos, p1Pos);
-    const ballToP2 = distance(ballPos, p2Pos);
-    const ballToLeft = distance(ballPos, [GOAL_WIDTH, HEIGHT / 2]);
-    const ballToRight = distance(ballPos, [WIDTH - GOAL_WIDTH, HEIGHT / 2]);
-
-    prevDistP1 = ballToP1;
-    prevDistP2 = ballToP2;
-    prevBallDistLeft = ballToLeft;
-    prevBallDistRight = ballToRight;
-}
-
-async function getAIAction(state, isP1) {
-    if (!session) return 0;
-    const indicator = isP1 ? 0.0 : 1.0;
-    const input = new Float32Array(state.length + 1);
-    input.set(state);
-    input[state.length] = indicator;
-
-    const tensor = new ort.Tensor('float32', input, [1, input.length]);
-    const feeds = { state: tensor };
-    const results = await session.run(feeds);
-    const logits = results.logits.data;
-    const probs = softmax(logits);
-    return weightedRandom(probs);
-}
-
-function softmax(arr) {
-    const max = Math.max(...arr);
-    const exp = arr.map(x => Math.exp(x - max));
-    const sum = exp.reduce((a, b) => a + b, 0);
-    return exp.map(x => x / sum);
-}
-
-function weightedRandom(probs) {
-    let r = Math.random();
-    let sum = 0;
-    for (let i = 0; i < probs.length; i++) {
-        sum += probs[i];
-        if (r <= sum) return i;
-    }
-    return probs.length - 1;
-}
-
-function getHumanAction(isP1) {
-    const map = isP1
-        ? { 'w': [0,-1], 's': [0,1], 'a': [-1,0], 'd': [1,0] }
-        : { 'arrowup': [0,-1], 'arrowdown': [0,1], 'arrowleft': [-1,0], 'arrowright': [1,0] };
-
-    let dx = 0, dy = 0;
-    if (keys['w'] && isP1) dy -= 1;
-    if (keys['s'] && isP1) dy += 1;
-    if (keys['a'] && isP1) dx -= 1;
-    if (keys['d'] && isP1) dx += 1;
-    if (keys['arrowup'] && !isP1) dy -= 1;
-    if (keys['arrowdown'] && !isP1) dy += 1;
-    if (keys['arrowleft'] && !isP1) dx -= 1;
-    if (keys['arrowright'] && !isP1) dx += 1;
-
-    for (let i = 0; i < actionVectors.length; i++) {
-        if (actionVectors[i][0] / PLAYER_ACCELERATION === dx && actionVectors[i][1] / PLAYER_ACCELERATION === dy) {
-            return i;
-        }
-    }
-    return 0;
-}
-
-function distance(a, b) {
-    const dx = a[0] - b[0];
-    const dy = a[1] - b[1];
-    return Math.sqrt(dx * dx + dy * dy);
 }
 
 function getState() {
-    const normX = x => x / WIDTH;
-    const normY = y => y / HEIGHT;
-    const normPos = (pos) => [normX(pos[0]), normY(pos[1])];
-    const normVel = (vel, maxSpeed) => [vel[0] / maxSpeed, vel[1] / maxSpeed];
-    const vec = (a, b) => [(b[0] - a[0]) / WIDTH, (b[1] - a[1]) / HEIGHT];
-
-    const distP1Ball = distance(p1Pos, ballPos);
-    const distP2Ball = distance(p2Pos, ballPos);
-
+    const distP1Ball = norm([ballPos[0] - player1Pos[0], ballPos[1] - player1Pos[1]]) / SIZE;
+    const distP2Ball = norm([ballPos[0] - player2Pos[0], ballPos[1] - player2Pos[1]]) / SIZE;
+    
     return [
-        ...normPos(p1Pos),
-        ...normVel(p1Vel, PLAYER_MAX_SPEED),
-        ...normPos(p2Pos),
-        ...normVel(p2Vel, PLAYER_MAX_SPEED),
-        ...normPos(ballPos),
-        ...normVel(ballVel, BALL_MAX_SPEED),
-        ...vec(p1Pos, ballPos),
-        ...vec(p2Pos, ballPos),
-        ...vec(p1Pos, p2Pos),
+        player1Pos[0] / WIDTH, player1Pos[1] / HEIGHT,
+        player1Vel[0] / PLAYER_MAX_SPEED, player1Vel[1] / PLAYER_MAX_SPEED,
+        player2Pos[0] / WIDTH, player2Pos[1] / HEIGHT,
+        player2Vel[0] / PLAYER_MAX_SPEED, player2Vel[1] / PLAYER_MAX_SPEED,
+        ballPos[0] / WIDTH, ballPos[1] / HEIGHT,
+        ballVel[0] / BALL_MAX_SPEED, ballVel[1] / BALL_MAX_SPEED,
+        (ballPos[0] - player1Pos[0]) / WIDTH, (ballPos[1] - player1Pos[1]) / HEIGHT,
+        (ballPos[0] - player2Pos[0]) / WIDTH, (ballPos[1] - player2Pos[1]) / HEIGHT,
+        (player2Pos[0] - player1Pos[0]) / WIDTH, (player2Pos[1] - player1Pos[1]) / HEIGHT,
         (ballPos[0] - GOAL_WIDTH) / WIDTH,
         (WIDTH - ballPos[0] - GOAL_WIDTH) / WIDTH,
         ballPos[1] / HEIGHT - 0.5,
-        distP1Ball > distP2Ball ? 1.0 : 0.0
+        distP1Ball > distP2Ball ? 1 : 0
     ];
+}
+
+async function getAIAction(playerSide) {
+    if (!session) return 0;
+    
+    const state = getState();
+    state.push(playerSide);  
+    try {
+        const input = new ort.Tensor('float32', new Float32Array(state), [1, 23]);
+        const feeds = { state: input };
+        const results = await session.run(feeds);
+        const logits = results.logits.data;
+        
+        const maxLogit = Math.max(...logits);
+        const expLogits = Array.from(logits).map(x => Math.exp(x - maxLogit));
+        const sumExp = expLogits.reduce((a, b) => a + b, 0);
+        const probs = expLogits.map(x => x / sumExp);
+        
+        const rand = Math.random();
+        let cumSum = 0;
+        for (let i = 0; i < probs.length; i++) {
+            cumSum += probs[i];
+            if (rand < cumSum) return i;
+        }
+        return probs.length - 1;
+    } catch (e) {
+        console.error('AI inference error:', e);
+        return 0;
+    }
+}
+
+function getHumanAction(isP1) {
+    const keymap = isP1 
+        ? { up: 'w', down: 's', left: 'a', right: 'd' }
+        : { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright' };
+    
+    const x = (keys[keymap.right] ? 1 : 0) - (keys[keymap.left] ? 1 : 0);
+    const y = (keys[keymap.down] ? 1 : 0) - (keys[keymap.up] ? 1 : 0);
+    
+    const dirToAction = {
+        '0,-1': 1, '0,1': 2, '-1,0': 3, '1,0': 4,
+        '-1,-1': 5, '1,-1': 6, '-1,1': 7, '1,1': 8
+    };
+    return dirToAction[`${x},${y}`] || 0;
+}
+
+async function gameLoop() {
+    let actionP1, actionP2;
+    if (player1Type === 'HUMAN') {
+        actionP1 = getHumanAction(true);
+    } else {
+        actionP1 = await getAIAction(0.0);
+    }
+    
+    if (player2Type === 'HUMAN') {
+        actionP2 = getHumanAction(false);
+    } else {
+        actionP2 = await getAIAction(1.0);
+    }
+    
+    const p1Acc = ACTION_VECTORS[actionP1];
+    const p2Acc = ACTION_VECTORS[actionP2];
+    
+    updatePhysics(player1Pos, player1Vel, p1Acc, PLAYER_MAX_SPEED, PLAYER_FRICTION);
+    updatePhysics(player2Pos, player2Vel, p2Acc, PLAYER_MAX_SPEED, PLAYER_FRICTION);
+    
+    clampPos(player1Pos, player1Vel, PLAYER_SIZE);
+    clampPos(player2Pos, player2Vel, PLAYER_SIZE);
+    
+    for (let i = 0; i < 2; i++) {
+        resolveCollisions(player1Pos, player1Vel, PLAYER_MASS, PLAYER_SIZE, ballPos, ballVel, BALL_MASS, BALL_SIZE, PLAYER_RESTITUTION);
+        resolveCollisions(player2Pos, player2Vel, PLAYER_MASS, PLAYER_SIZE, ballPos, ballVel, BALL_MASS, BALL_SIZE, PLAYER_RESTITUTION);
+    }
+    
+    ballPos[0] += ballVel[0];
+    ballPos[1] += ballVel[1];
+    
+    handleWallCollisions();
+    applyCornerRepulsion();
+    
+    const ballSpeed = norm(ballVel);
+    if (ballSpeed > BALL_MAX_SPEED) {
+        ballVel[0] = (ballVel[0] / ballSpeed) * BALL_MAX_SPEED;
+        ballVel[1] = (ballVel[1] / ballSpeed) * BALL_MAX_SPEED;
+    }
+    ballVel[0] *= BALL_FRICTION;
+    ballVel[1] *= BALL_FRICTION;
+    
+    const goalCode = checkGoal();
+    if (goalCode > 0) {
+        resetPositions();
+        updateScoreDisplay();
+    }
+    
+    currentStep++;
+    if (currentStep >= MAX_STEPS) {
+        resetGame();
+    }
+    
+    render();
+    
+    animationId = requestAnimationFrame(gameLoop);
+}
+
+function updatePhysics(pos, vel, acc, maxSpeed, friction) {
+    vel[0] += acc[0];
+    vel[1] += acc[1];
+    
+    const speed = norm(vel);
+    if (speed > maxSpeed) {
+        vel[0] = (vel[0] / speed) * maxSpeed;
+        vel[1] = (vel[1] / speed) * maxSpeed;
+    }
+    
+    if (acc[0] === 0) vel[0] *= friction;
+    if (acc[1] === 0) vel[1] *= friction;
+    
+    pos[0] += vel[0];
+    pos[1] += vel[1];
 }
 
 function clampPos(pos, vel, radius) {
     if (pos[0] < radius) {
         pos[0] = radius;
-        if (vel[0] < 0) vel[0] = 0;
+        vel[0] = 0;
     }
     if (pos[0] > WIDTH - radius) {
         pos[0] = WIDTH - radius;
-        if (vel[0] > 0) vel[0] = 0;
+        vel[0] = 0;
     }
-
     if (pos[1] < radius) {
         pos[1] = radius;
-        if (vel[1] < 0) vel[1] = 0;
+        vel[1] = 0;
     }
     if (pos[1] > HEIGHT - radius) {
         pos[1] = HEIGHT - radius;
-        if (vel[1] > 0) vel[1] = 0;
+        vel[1] = 0;
     }
 }
 
-function step(action1, action2) {
-    const acc1 = actionVectors[action1];
-    const acc2 = actionVectors[action2];
-    p1Vel[0] += acc1[0];
-    p1Vel[1] += acc1[1];
-    p2Vel[0] += acc2[0];
-    p2Vel[1] += acc2[1];
-
-    const clampVel = (vel, max) => {
-        const speed = Math.sqrt(vel[0]**2 + vel[1]**2);
-        if (speed > max) {
-            vel[0] = (vel[0] / speed) * max;
-            vel[1] = (vel[1] / speed) * max;
-        }
-    };
-    clampVel(p1Vel, PLAYER_MAX_SPEED);
-    clampVel(p2Vel, PLAYER_MAX_SPEED);
-
-    p1Pos[0] += p1Vel[0];
-    p1Pos[1] += p1Vel[1];
-    p2Pos[0] += p2Vel[0];
-    p2Pos[1] += p2Vel[1];
-    ballPos[0] += ballVel[0];
-    ballPos[1] += ballVel[1];
-
-    clampPos(p1Pos, p1Vel, PLAYER_SIZE);
-    clampPos(p2Pos, p2Vel, PLAYER_SIZE);
-
-    p1Vel[0] *= PLAYER_FRICTION;
-    p1Vel[1] *= PLAYER_FRICTION;
-    p2Vel[0] *= PLAYER_FRICTION;
-    p2Vel[1] *= PLAYER_FRICTION;
-    ballVel[0] *= BALL_FRICTION;
-    ballVel[1] *= BALL_FRICTION;
-
-    handlePlayerBallCollision();
-    handleWallCollisions();
-    applyCornerRepulsion();
-    checkGoal();
-}
-
-function handlePlayerBallCollision() {
-    const checkCollision = (playerPos, playerVel) => {
-        const dx = ballPos[0] - playerPos[0];
-        const dy = ballPos[1] - playerPos[1];
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        const minDist = PLAYER_SIZE + BALL_SIZE;
-
-        if (dist < minDist) {
-            const nx = dx / dist;
-            const ny = dy / dist;
-
-            const relativeVelX = ballVel[0] - playerVel[0];
-            const relativeVelY = ballVel[1] - playerVel[1];
-            const dot = relativeVelX * nx + relativeVelY * ny;
-
-            if (dot < 0) {
-                const impulse = 2 * dot / (PLAYER_MASS + BALL_MASS);
-                ballVel[0] -= impulse * PLAYER_MASS * nx * BALL_RESTITUTION;
-                ballVel[1] -= impulse * PLAYER_MASS * ny * BALL_RESTITUTION;
-
-                const noise = (Math.random() - 0.5) * RANDOM_IMPULSE_NOISE_BALL;
-                ballVel[0] += noise;
-                ballVel[1] += noise;
-
-                const overlap = minDist - dist;
-                ballPos[0] += nx * overlap * 0.5;
-                ballPos[1] += ny * overlap * 0.5;
-            }
-        }
-    };
-
-    checkCollision(p1Pos, p1Vel);
-    checkCollision(p2Pos, p2Vel);
+function resolveCollisions(pos1, vel1, mass1, size1, pos2, vel2, mass2, size2, restitution) {
+    const deltaPos = [pos2[0] - pos1[0], pos2[1] - pos1[1]];
+    const distance = norm(deltaPos);
+    
+    if (distance >= size1 + size2) return;
+    
+    const distSafe = Math.max(distance, 1e-6);
+    const collisionNormal = [deltaPos[0] / distSafe, deltaPos[1] / distSafe];
+    const overlap = size1 + size2 - distance;
+    
+    const mass1Ratio = mass2 / (mass1 + mass2);
+    const mass2Ratio = mass1 / (mass1 + mass2);
+    
+    pos1[0] -= collisionNormal[0] * overlap * mass1Ratio;
+    pos1[1] -= collisionNormal[1] * overlap * mass1Ratio;
+    pos2[0] += collisionNormal[0] * overlap * mass2Ratio;
+    pos2[1] += collisionNormal[1] * overlap * mass2Ratio;
+    
+    const relVel = [vel2[0] - vel1[0], vel2[1] - vel1[1]];
+    const velAlongNormal = relVel[0] * collisionNormal[0] + relVel[1] * collisionNormal[1];
+    
+    if (velAlongNormal >= 0) return;
+    
+    let impulseMag = -(1 + restitution) * velAlongNormal;
+    impulseMag /= (1 / mass1 + 1 / mass2);
+    
+    const impulse = [impulseMag * collisionNormal[0], impulseMag * collisionNormal[1]];
+    
+    vel1[0] -= impulse[0] / mass1;
+    vel1[1] -= impulse[1] / mass1;
+    vel2[0] += impulse[0] / mass2;
+    vel2[1] += impulse[1] / mass2;
+    
+    if (mass2 === BALL_MASS) {
+        vel2[0] += (Math.random() - 0.5) * 2 * RANDOM_IMPULSE_NOISE_BALL;
+        vel2[1] += (Math.random() - 0.5) * 2 * RANDOM_IMPULSE_NOISE_BALL;
+    }
 }
 
 function handleWallCollisions() {
     const topGoal = (HEIGHT - GOAL_HEIGHT) / 2;
     const bottomGoal = topGoal + GOAL_HEIGHT;
-
+    const inGoalY = ballPos[1] > topGoal && ballPos[1] < bottomGoal;
+    
+    if (ballPos[0] - BALL_SIZE < GOAL_WIDTH && !inGoalY) {
+        ballPos[0] = GOAL_WIDTH + BALL_SIZE;
+        ballVel[0] = Math.abs(ballVel[0]) * WALL_BOUNCE;
+    }
+    if (ballPos[0] + BALL_SIZE > WIDTH - GOAL_WIDTH && !inGoalY) {
+        ballPos[0] = WIDTH - GOAL_WIDTH - BALL_SIZE;
+        ballVel[0] = -Math.abs(ballVel[0]) * WALL_BOUNCE;
+    }
     if (ballPos[1] - BALL_SIZE < 0) {
         ballPos[1] = BALL_SIZE;
         ballVel[1] = Math.abs(ballVel[1]) * WALL_BOUNCE;
@@ -296,103 +339,88 @@ function handleWallCollisions() {
         ballPos[1] = HEIGHT - BALL_SIZE;
         ballVel[1] = -Math.abs(ballVel[1]) * WALL_BOUNCE;
     }
-
-    const inGoalY = ballPos[1] > topGoal && ballPos[1] < bottomGoal;
-    if (!inGoalY) {
-        if (ballPos[0] - BALL_SIZE < GOAL_WIDTH) {
-            ballPos[0] = GOAL_WIDTH + BALL_SIZE;
-            ballVel[0] = Math.abs(ballVel[0]) * WALL_BOUNCE;
-        }
-        if (ballPos[0] + BALL_SIZE > WIDTH - GOAL_WIDTH) {
-            ballPos[0] = WIDTH - GOAL_WIDTH - BALL_SIZE;
-            ballVel[0] = -Math.abs(ballVel[0]) * WALL_BOUNCE;
-        }
-    }
 }
 
 function applyCornerRepulsion() {
-    const corners = [[0,0], [WIDTH,0], [0,HEIGHT], [WIDTH,HEIGHT]];
+    const corners = [[0, 0], [WIDTH, 0], [0, HEIGHT], [WIDTH, HEIGHT]];
     let forceX = 0, forceY = 0;
-
+    
     for (const corner of corners) {
-        const dx = ballPos[0] - corner[0];
-        const dy = ballPos[1] - corner[1];
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < CORNER_RADIUS && dist > 0.001) {
-            forceX += dx / dist * CORNER_FORCE;
-            forceY += dy / dist * CORNER_FORCE;
+        const diff = [ballPos[0] - corner[0], ballPos[1] - corner[1]];
+        const dist = norm(diff);
+        
+        if (dist < CORNER_RADIUS) {
+            const safeDist = Math.max(dist, 1e-5);
+            forceX += (diff[0] / safeDist);
+            forceY += (diff[1] / safeDist);
         }
     }
-    ballVel[0] += forceX;
-    ballVel[1] += forceY;
+    
+    ballVel[0] += forceX * CORNER_FORCE;
+    ballVel[1] += forceY * CORNER_FORCE;
 }
 
 function checkGoal() {
     const topGoal = (HEIGHT - GOAL_HEIGHT) / 2;
     const bottomGoal = topGoal + GOAL_HEIGHT;
     const inGoalY = ballPos[1] > topGoal && ballPos[1] < bottomGoal;
-
-    if (inGoalY && ballPos[0] + BALL_SIZE >= WIDTH - GOAL_WIDTH) {
-        scoreP1++;
-        document.getElementById('score').textContent = `${scoreP1} - ${scoreP2}`;
-        resetGame();
-    }
-    if (inGoalY && ballPos[0] - BALL_SIZE <= GOAL_WIDTH) {
+    
+    if (ballPos[0] - BALL_SIZE <= GOAL_WIDTH && inGoalY) {
         scoreP2++;
-        document.getElementById('score').textContent = `${scoreP1} - ${scoreP2}`;
-        resetGame();
+        return 2;
     }
+    if (ballPos[0] + BALL_SIZE >= WIDTH - GOAL_WIDTH && inGoalY) {
+        scoreP1++;
+        return 1;
+    }
+    return 0;
 }
 
-async function gameLoop() {
-    const state = getState();
-
-    const action1 = p1Type === 'ai'
-        ? await getAIAction(state, true)
-        : getHumanAction(true);
-
-    const action2 = p2Type === 'ai'
-        ? await getAIAction(state, false)
-        : getHumanAction(false);
-
-    step(action1, action2);
-    render();
-
-    requestAnimationFrame(gameLoop);
+function updateScoreDisplay() {
+    document.getElementById('score-p1').textContent = scoreP1;
+    document.getElementById('score-p2').textContent = scoreP2;
 }
 
 function render() {
-    ctx.fillStyle = '#468847';
+    ctx.fillStyle = '#468C46';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    ctx.fillStyle = '#c62828';
-    ctx.fillRect(0, (HEIGHT - GOAL_HEIGHT)/2, GOAL_WIDTH, GOAL_HEIGHT);
-    ctx.fillStyle = '#1565c0';
-    ctx.fillRect(WIDTH - GOAL_WIDTH, (HEIGHT - GOAL_HEIGHT)/2, GOAL_WIDTH, GOAL_HEIGHT);
-
+    
+    const topGoal = (HEIGHT - GOAL_HEIGHT) / 2;
+    
+    ctx.fillStyle = '#C80000';
+    ctx.fillRect(0, topGoal, GOAL_WIDTH, GOAL_HEIGHT);
+    ctx.fillStyle = '#0000C8';
+    ctx.fillRect(WIDTH - GOAL_WIDTH, topGoal, GOAL_WIDTH, GOAL_HEIGHT);
+    
     ctx.strokeStyle = 'white';
     ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(WIDTH/2, 0);
-    ctx.lineTo(WIDTH/2, HEIGHT);
+    ctx.moveTo(WIDTH / 2, 0);
+    ctx.lineTo(WIDTH / 2, HEIGHT);
     ctx.stroke();
-
+    
     ctx.beginPath();
-    ctx.arc(WIDTH/2, HEIGHT/2, 70, 0, Math.PI * 2);
+    ctx.arc(WIDTH / 2, HEIGHT / 2, 70, 0, Math.PI * 2);
     ctx.stroke();
-
-    ctx.fillStyle = '#c62828';
+    
+    ctx.fillStyle = '#C80000';
     ctx.beginPath();
-    ctx.arc(p1Pos[0], p1Pos[1], PLAYER_SIZE, 0, Math.PI * 2);
+    ctx.arc(player1Pos[0], player1Pos[1], PLAYER_SIZE, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.fillStyle = '#1565c0';
+    
+    ctx.fillStyle = '#0000C8';
     ctx.beginPath();
-    ctx.arc(p2Pos[0], p2Pos[1], PLAYER_SIZE, 0, Math.PI * 2);
+    ctx.arc(player2Pos[0], player2Pos[1], PLAYER_SIZE, 0, Math.PI * 2);
     ctx.fill();
-
+    
     ctx.fillStyle = 'black';
     ctx.beginPath();
     ctx.arc(ballPos[0], ballPos[1], BALL_SIZE, 0, Math.PI * 2);
     ctx.fill();
 }
+
+function norm(v) {
+    return Math.sqrt(v[0] * v[0] + v[1] * v[1]);
+}
+
+init();

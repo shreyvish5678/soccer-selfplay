@@ -26,17 +26,19 @@ const CORNER_FORCE = 1.5;
 
 const SIZE = Math.sqrt(WIDTH ** 2 + HEIGHT ** 2);
 const MAX_STEPS = 5000;
+const FPS = 60;
+const FRAME_DURATION = 1000 / FPS;  
 
 const ACTION_VECTORS = [
     [0, 0],   
     [0, -1],  
-    [0, 1],  
-    [-1, 0], 
-    [1, 0],  
-    [-1, -1],
-    [1, -1],
+    [0, 1],   
+    [-1, 0],  
+    [1, 0],   
+    [-1, -1], 
+    [1, -1],  
     [-1, 1],  
-    [1, 1], 
+    [1, 1],   
 ].map(v => [v[0] * PLAYER_ACCELERATION, v[1] * PLAYER_ACCELERATION]);
 
 let player1Pos = [0, 0];
@@ -55,6 +57,7 @@ let player2Type = 'AI';
 
 let canvas, ctx;
 let animationId = null;
+let lastFrameTime = 0;
 
 const keys = {};
 
@@ -91,7 +94,8 @@ function startGame() {
     
     resetGame();
     
-    gameLoop();
+    lastFrameTime = performance.now();
+    gameLoop(lastFrameTime);
 }
 
 function backToMenu() {
@@ -145,7 +149,8 @@ async function getAIAction(playerSide) {
     if (!session) return 0;
     
     const state = getState();
-    state.push(playerSide);  
+    state.push(playerSide); 
+    
     try {
         const input = new ort.Tensor('float32', new Float32Array(state), [1, 23]);
         const feeds = { state: input };
@@ -185,60 +190,66 @@ function getHumanAction(isP1) {
     return dirToAction[`${x},${y}`] || 0;
 }
 
-async function gameLoop() {
-    let actionP1, actionP2;
-    if (player1Type === 'HUMAN') {
-        actionP1 = getHumanAction(true);
-    } else {
-        actionP1 = await getAIAction(0.0);
+async function gameLoop(currentTime) {
+    const deltaTime = currentTime - lastFrameTime;
+    
+    if (deltaTime >= FRAME_DURATION) {
+        lastFrameTime = currentTime - (deltaTime % FRAME_DURATION);
+        
+        let actionP1, actionP2;
+        if (player1Type === 'HUMAN') {
+            actionP1 = getHumanAction(true);
+        } else {
+            actionP1 = await getAIAction(0.0);
+        }
+        
+        if (player2Type === 'HUMAN') {
+            actionP2 = getHumanAction(false);
+        } else {
+            actionP2 = await getAIAction(1.0);
+        }
+        
+        const p1Acc = ACTION_VECTORS[actionP1];
+        const p2Acc = ACTION_VECTORS[actionP2];
+        
+        updatePhysics(player1Pos, player1Vel, p1Acc, PLAYER_MAX_SPEED, PLAYER_FRICTION);
+        updatePhysics(player2Pos, player2Vel, p2Acc, PLAYER_MAX_SPEED, PLAYER_FRICTION);
+        
+        clampPos(player1Pos, player1Vel, PLAYER_SIZE);
+        clampPos(player2Pos, player2Vel, PLAYER_SIZE);
+        
+        for (let i = 0; i < 2; i++) {
+            resolveCollisions(player1Pos, player1Vel, PLAYER_MASS, PLAYER_SIZE, ballPos, ballVel, BALL_MASS, BALL_SIZE, PLAYER_RESTITUTION);
+            resolveCollisions(player2Pos, player2Vel, PLAYER_MASS, PLAYER_SIZE, ballPos, ballVel, BALL_MASS, BALL_SIZE, PLAYER_RESTITUTION);
+        }
+        
+        ballPos[0] += ballVel[0];
+        ballPos[1] += ballVel[1];
+        
+        handleWallCollisions();
+        applyCornerRepulsion();
+        
+        const ballSpeed = norm(ballVel);
+        if (ballSpeed > BALL_MAX_SPEED) {
+            ballVel[0] = (ballVel[0] / ballSpeed) * BALL_MAX_SPEED;
+            ballVel[1] = (ballVel[1] / ballSpeed) * BALL_MAX_SPEED;
+        }
+        ballVel[0] *= BALL_FRICTION;
+        ballVel[1] *= BALL_FRICTION;
+        
+        const goalCode = checkGoal();
+        if (goalCode > 0) {
+            resetPositions();
+            updateScoreDisplay();
+        }
+        
+        currentStep++;
+        if (currentStep >= MAX_STEPS) {
+            resetGame();
+        }
+        
+        render();
     }
-    
-    if (player2Type === 'HUMAN') {
-        actionP2 = getHumanAction(false);
-    } else {
-        actionP2 = await getAIAction(1.0);
-    }
-    
-    const p1Acc = ACTION_VECTORS[actionP1];
-    const p2Acc = ACTION_VECTORS[actionP2];
-    
-    updatePhysics(player1Pos, player1Vel, p1Acc, PLAYER_MAX_SPEED, PLAYER_FRICTION);
-    updatePhysics(player2Pos, player2Vel, p2Acc, PLAYER_MAX_SPEED, PLAYER_FRICTION);
-    
-    clampPos(player1Pos, player1Vel, PLAYER_SIZE);
-    clampPos(player2Pos, player2Vel, PLAYER_SIZE);
-    
-    for (let i = 0; i < 2; i++) {
-        resolveCollisions(player1Pos, player1Vel, PLAYER_MASS, PLAYER_SIZE, ballPos, ballVel, BALL_MASS, BALL_SIZE, PLAYER_RESTITUTION);
-        resolveCollisions(player2Pos, player2Vel, PLAYER_MASS, PLAYER_SIZE, ballPos, ballVel, BALL_MASS, BALL_SIZE, PLAYER_RESTITUTION);
-    }
-    
-    ballPos[0] += ballVel[0];
-    ballPos[1] += ballVel[1];
-    
-    handleWallCollisions();
-    applyCornerRepulsion();
-    
-    const ballSpeed = norm(ballVel);
-    if (ballSpeed > BALL_MAX_SPEED) {
-        ballVel[0] = (ballVel[0] / ballSpeed) * BALL_MAX_SPEED;
-        ballVel[1] = (ballVel[1] / ballSpeed) * BALL_MAX_SPEED;
-    }
-    ballVel[0] *= BALL_FRICTION;
-    ballVel[1] *= BALL_FRICTION;
-    
-    const goalCode = checkGoal();
-    if (goalCode > 0) {
-        resetPositions();
-        updateScoreDisplay();
-    }
-    
-    currentStep++;
-    if (currentStep >= MAX_STEPS) {
-        resetGame();
-    }
-    
-    render();
     
     animationId = requestAnimationFrame(gameLoop);
 }

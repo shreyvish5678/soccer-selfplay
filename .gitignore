@@ -1,2 +1,4 @@
-soccer_checkpoints/
+agent_checkpoints/
+opponent_checkpoints/
 *.pth
+__pycache__/

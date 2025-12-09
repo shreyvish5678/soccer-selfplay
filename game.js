@@ -429,21 +429,22 @@ function render() {
     ctx.arc(ballPos[0], ballPos[1], BALL_SIZE, 0, Math.PI * 2);
     ctx.fill();
 
+    const r = CORNER_RADIUS / 2;
     ctx.fillStyle = 'yellow';
     ctx.beginPath();
-    ctx.arc(0, 0, CORNER_RADIUS / 2, 0, Math.PI * 2);
+    ctx.arc(r, r, r, 0, Math.PI * 2);      
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(WIDTH, 0, CORNER_RADIUS / 2, 0, Math.PI * 2);
+    ctx.arc(WIDTH - r, r, r, 0, Math.PI * 2);    
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(0, HEIGHT, CORNER_RADIUS / 2, 0, Math.PI * 2);
+    ctx.arc(r, HEIGHT - r, r, 0, Math.PI * 2);  
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(WIDTH, HEIGHT, CORNER_RADIUS / 2, 0, Math.PI * 2);
+    ctx.arc(WIDTH - r, HEIGHT - r, r, 0, Math.PI * 2);
     ctx.fill();
 }
 

@@ -37,8 +37,8 @@ class SoccerGameEnv:
         self.STAGNATION_THRESHOLD = 180 # steps the game has to be stagnant to reset positions
         self.STAGNATION_VELOCITY = 0.5 # ball velocity to determine whether current step is stagnant
 
-        self.CORNER_RADIUS = 60.0 # radius of corner arc
-        self.CORNER_FORCE = 3.0 # magnitude of corner arc force applied to ball (prevent ball getting stuck in corner)
+        self.CORNER_RADIUS = 30.0 # radius of corner arc
+        self.CORNER_FORCE = 1.5 # magnitude of corner arc force applied to ball (prevent ball getting stuck in corner)
 
         self.SIZE = torch.sqrt(torch.tensor(self.WIDTH**2 + self.HEIGHT**2, device=self.device)) # diagonal size of field
 

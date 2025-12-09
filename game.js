@@ -432,19 +432,19 @@ function render() {
     const r = CORNER_RADIUS / 2;
     ctx.fillStyle = 'yellow';
     ctx.beginPath();
-    ctx.arc(r, r, r, 0, Math.PI * 2);      
+    ctx.arc(0, 0, r, 0, Math.PI * 2);      
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(WIDTH - r, r, r, 0, Math.PI * 2);    
+    ctx.arc(WIDTH, 0, r, 0, Math.PI * 2);    
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(r, HEIGHT - r, r, 0, Math.PI * 2);  
+    ctx.arc(0, HEIGHT, r, 0, Math.PI * 2);  
     ctx.fill();
 
     ctx.beginPath();
-    ctx.arc(WIDTH - r, HEIGHT - r, r, 0, Math.PI * 2);
+    ctx.arc(WIDTH, HEIGHT, r, 0, Math.PI * 2);
     ctx.fill();
 }
 

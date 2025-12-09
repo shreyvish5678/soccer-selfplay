@@ -21,8 +21,8 @@ const RANDOM_IMPULSE_NOISE_BALL = 1.5;
 const PLAYER_MASS = 2.0;
 const BALL_MASS = 1.0;
 
-const CORNER_RADIUS = 30.0;
-const CORNER_FORCE = 1.5;
+const CORNER_RADIUS = 60.0;
+const CORNER_FORCE = 3.0;
 
 const SIZE = Math.sqrt(WIDTH ** 2 + HEIGHT ** 2);
 const MAX_STEPS = 5000;

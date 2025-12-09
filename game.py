@@ -570,10 +570,10 @@ class SoccerGameEnv:
         pygame.draw.circle(self.screen, (255, 255, 255), (self.WIDTH // 2, self.HEIGHT // 2), 70, 5) # draw center circle
 
         # draw corner circles to visualize corner repulsion areas
-        pygame.draw.circle(self.screen, (255, 255, 0), (0, 0), self.CORNER_RADIUS // 2, 2) # top-left corner
-        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, 0), self.CORNER_RADIUS // 2, 2) # top-right corner  
-        pygame.draw.circle(self.screen, (255, 255, 0), (0, self.HEIGHT), self.CORNER_RADIUS // 2, 2) # bottom-left corner
-        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, self.HEIGHT), self.CORNER_RADIUS // 2, 2) # bottom-right corner
+        pygame.draw.circle(self.screen, (255, 255, 0), (0, 0), self.CORNER_RADIUS // 2) # top-left corner
+        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, 0), self.CORNER_RADIUS // 2) # top-right corner  
+        pygame.draw.circle(self.screen, (255, 255, 0), (0, self.HEIGHT), self.CORNER_RADIUS // 2) # bottom-left corner
+        pygame.draw.circle(self.screen, (255, 255, 0), (self.WIDTH, self.HEIGHT), self.CORNER_RADIUS // 2) # bottom-right corner
 
         pygame.draw.circle(self.screen, (200, 0, 0), p1, self.PLAYER_SIZE) # draw player 1 as red circle
         pygame.draw.circle(self.screen, (0, 0, 200), p2, self.PLAYER_SIZE) # draw player 2 as blue circles

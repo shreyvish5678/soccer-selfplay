@@ -35,14 +35,7 @@ class ActorCriticNetwork(nn.Module):
             nn.Linear(512, 1),
         )
 
-    def select_action(self, state):
-        # handles both single and batch state inputs
-        if state.dim() == 1:
-            state = state.unsqueeze(0)
-            squeeze_output = True
-        else:
-            squeeze_output = False
-            
+    def select_action(self, state):            
         action_probs = torch.softmax(self.actor(state), dim=-1) # get action probabilities
         dist = torch.distributions.Categorical(action_probs) # create categorical distribution
         action = dist.sample() # sample action from distribution
@@ -50,10 +43,7 @@ class ActorCriticNetwork(nn.Module):
         # #used for training to compute loss and optimize policy
         action_logprob = dist.log_prob(action) 
         state_value = self.critic(state).squeeze(-1) # get state value from critic
-        
         # return the action, logprob, and state value
-        if squeeze_output:
-            return action.squeeze(0), action_logprob.squeeze(0), state_value.squeeze(0)
         return action, action_logprob, state_value
     
     def evaluate_action(self, state, action):
@@ -69,10 +59,10 @@ class PPOTrainer:
     def __init__(
         self, agent, env, learning_rate=3e-4, gamma=0.99, gae_lambda=0.95, 
         clip_epsilon=0.2, value_coeff=0.5, entropy_coeff=0.01, max_grad_norm=0.5,
-        epochs=10, batch_size=2048, norm_advantages=True, clip_value_loss=False, 
-        target_kl=None, opponent_pool_size=10, save_opponent_interval=200000, 
-        swap_opponent_interval=100000, play_against_latest_prob=0.5, 
-        win_rate_threshold=0.6, device="cpu", checkpoint_path="./ppo_checkpoints/"
+        epochs=10, batch_size=10000, norm_advantages=True, clip_value_loss=False, 
+        target_kl=None, opponent_pool_size=20, save_opponent_interval=400000, save_agent_interval=20000000,
+        swap_opponent_interval=200000, play_against_latest_prob=0.5, 
+        win_rate_threshold=0.55, device="cpu", temp_pool_path="./opponent_checkpoints", checkpoint_path="./agent_checkpoints"
     ):
         self.agent = agent.to(device) # main agent being trained
         self.env = env # environment to train on
@@ -98,11 +88,16 @@ class PPOTrainer:
         self.opponent_pool_size = opponent_pool_size # size of opponent pool
         self.save_opponent_interval = save_opponent_interval # interval to save opponents
         self.swap_opponent_interval = swap_opponent_interval # interval to swap opponents
+        self.save_agent_interval = save_agent_interval # interval to save main agent
         self.play_against_latest_prob = play_against_latest_prob # probability to play against latest opponent
         self.win_rate_threshold = win_rate_threshold # win rate threshold for opponent swapping
 
         self.next_opponent_swap = self.swap_opponent_interval # next timestep to swap opponent
         self.next_opponent_save = self.save_opponent_interval # next timestep to save opponent
+        self.next_agent_save = self.save_agent_interval # next timestep to save main agent
+
+        self.temp_pool_path = temp_pool_path # temporary path to save opponents
+        os.makedirs(self.temp_pool_path, exist_ok=True) # create temp pool directory if not exists
 
         self.checkpoint_path = checkpoint_path # path to save checkpoints
         os.makedirs(self.checkpoint_path, exist_ok=True) # create checkpoint directory if not exists
@@ -126,9 +121,19 @@ class PPOTrainer:
         self.episode_rewards_p2 = torch.zeros(self.num_envs, device=device) # tensor to track rewards for player 2
         self.is_agent_p1 = torch.rand(self.num_envs, device=device) < 0.5 # random bool tensor to decide if agent is player 1 for each env
 
+    def make_opponent_filename(self, step):
+        # function to save agent model filename
+        return os.path.join(self.temp_pool_path, f"agent_step{step}.pth")
+    
     def make_opponent_filename(self, idx, step):
         # function to save opponent model filename
-        return os.path.join(self.checkpoint_path, f"opponent_idx{idx}_step{step}.pth")
+        return os.path.join(self.temp_pool_path, f"opponent_idx{idx}_step{step}.pth")
+    
+    def save_agent(self):
+        # save the current agent model to checkpoint path
+        filename = os.path.join(self.checkpoint_path, f"agent_step{self.total_timesteps}.pth")
+        torch.save(self.agent.state_dict(), filename)
+        print(f"Saved agent checkpoint to {filename}")
     
     def save_to_pool(self):
         state_dict = {k: v.cpu().clone() for k, v in self.agent.state_dict().items()} # get state dict of agent
@@ -149,6 +154,14 @@ class PPOTrainer:
 
         self.opponent_pool.append(meta) # add new opponent to pool, automatically removes oldest if full
         print(f"Saved opponent (pool_size={len(self.opponent_pool)}) to {filename}")
+
+    def delete_temp_pool(self):
+        # delete all temporary opponent files from disk
+        for meta in self.opponent_pool:
+            if os.path.exists(meta["path"]):
+                os.remove(meta["path"])
+        os.rmdir(self.temp_pool_path) # remove the temp directory
+        print(f"Deleted temporary opponent pool directory {self.temp_pool_path}")
 
     def sample_opponent(self):
         # sample an opponent from the pool or use latest agent based on probability
@@ -188,8 +201,8 @@ class PPOTrainer:
         # this allows a balance between bias and variance in the advantage estimates
         # leading to more stable and efficient policy updates
 
-        advantages = torch.zeros_like(rewards)
-        last_gae = torch.zeros(self.num_envs, device=self.device)
+        advantages = torch.zeros_like(rewards) # shape: (num_envs, 2)
+        last_gae = torch.zeros(self.num_envs, device=self.device) # initialize last GAE to 0
 
         for t in reversed(range(self.rollout_steps)):
             if t == self.rollout_steps - 1:
@@ -299,6 +312,11 @@ class PPOTrainer:
                 if win_rate >= self.win_rate_threshold or len(self.opponent_pool) == 0:
                     self.save_to_pool()
                 self.next_opponent_save += self.save_opponent_interval # schedule next save time
+
+            if self.total_timesteps >= self.next_agent_save:
+                # if it's time to save the main agent, do so
+                self.save_agent()
+                self.next_agent_save += self.save_agent_interval # schedule next agent save time
 
         with torch.no_grad():
             agent_indicator = (~self.is_agent_p1).float() # indicator for agent being player 1 or 2
@@ -453,21 +471,15 @@ class PPOTrainer:
                 print(f"Opponent: Score={avg_opp_score:.2f}, Reward={avg_opp_reward:.2f}")
                 print(f"Losses: Actor={actor_loss:.4f}, Critic={critic_loss:.4f}, Entropy={entropy_loss:.4f}, Total={total_loss:.4f}")
 
+        self.delete_temp_pool() # clean up temporary opponent files after training
+
     def save_model(self, filepath):
-        torch.save({
-            'agent_state_dict': self.agent.state_dict(), # save agent model state
-            'optimizer_state_dict': self.optimizer.state_dict(), # save optimizer state
-            'opponent_pool': list(self.opponent_pool), # the opponent pool
-            'total_timesteps': self.total_timesteps, # total timesteps trained
-        }, filepath)
+        torch.save(self.agent.state_dict(), filepath)
         print(f"Saved checkpoint to {filepath}")
 
     def load_model(self, filepath):
         checkpoint = torch.load(filepath, map_location=self.device) # load checkpoint
-        self.agent.load_state_dict(checkpoint['agent_state_dict']) # load agent model state
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict']) # load optimizer state
-        self.opponent_pool = deque(checkpoint['opponent_pool'], maxlen=self.opponent_pool_size) # load opponent pool
-        self.total_timesteps = checkpoint['total_timesteps'] # load total timesteps trained
+        self.agent.load_state_dict(checkpoint) # load state dict into agent
         print(f"Loaded checkpoint from {filepath}")
 
 if __name__ == "__main__":
@@ -501,16 +513,8 @@ if __name__ == "__main__":
     trainer = PPOTrainer(
         agent=agent,
         env=env,
-        learning_rate=3e-4,
-        batch_size=10000, # batch size of 10k for stable updates
-        opponent_pool_size=20, # pool size of 20 opponents
-        save_opponent_interval=200000, # save opponent every 200k steps (100M steps total, so 500 total opponents max)
-        swap_opponent_interval=100000, # swap opponent every 100k steps (100M steps total, so 1000 swaps max)
-        play_against_latest_prob=0.5, # 50% chance to play against latest agent
-        win_rate_threshold=0.55, # need at least 55% win rate to save opponent
-        checkpoint_path='./soccer_checkpoints', # path to save checkpoints
         device=device 
     )
 
-    trainer.train(total_timesteps=160000000, log_interval=1) # train for 160 million steps, so 160M / 20M = 8 updates, and 160M / 2k = 80k games played!
+    trainer.train(total_timesteps=200000000, log_interval=1) # train for 200 million steps, so 200M / 20M = 10 updates, and 200M / 2k = 100k games played!
     trainer.save_model('soccer_final.pth') # save final model, on my device training took just under 1 hour! 

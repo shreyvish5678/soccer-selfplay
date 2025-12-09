@@ -2,7 +2,7 @@ import torch
 from ppo import ActorCriticNetwork
 
 MODEL_PATH = "soccer_final.pth" # the model path for the trained AI
-ONNX_OUTPUT = "web_demo/soccer_ai.onnx" # output ONNX model path
+ONNX_OUTPUT = "soccer_ai.onnx" # output ONNX model path
 
 STATE_DIM = 22 + 1 # original state dim + 1 for player side indicator
 ACTION_DIM = 9 # number of discrete actions
@@ -14,11 +14,7 @@ model.to(device)
 
 # load the trained model and set to eval mode
 checkpoint = torch.load(MODEL_PATH, map_location=device)
-if 'agent_state_dict' in checkpoint:
-    model.load_state_dict(checkpoint['agent_state_dict'])
-else:
-    model.load_state_dict(checkpoint)
-
+model.load_state_dict(checkpoint)
 model.eval()
 
 # create a dummy input for the model

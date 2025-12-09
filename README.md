@@ -1,7 +1,7 @@
 # Soccer Physics AI – Self-Play PPO Training
 
 2D physics-based soccer game where two agents learn to play against each other using **Proximal Policy Optimization (PPO)** with **self-play**.  
-Agents are trained completely from scratch (no human data) and reach a strong level in **~1 hour** on Apple Silicon M4 Max with 36GB unified memory.
+Agents are trained completely from scratch (no human data) and reach a strong level in **1 hour** on Apple Silicon M4 Max with 36GB unified memory.
 
 ## Features
 
@@ -32,9 +32,9 @@ python3 ppo.py
 
 Training parameters (already tuned):
 - 10,000 parallel environments
-- 2,000 steps per episode → ~20M timesteps per update
-- 160M total timesteps (~80,000 games)
-- Trained in < 1 hour on M4 Max (MPS) or any modern GPU
+- 2,000 steps per episode → 20M timesteps per update
+- 200M total timesteps (100,000 games)
+- Trained in 1 hour on M4 Max (MPS) or any modern GPU
 
 The final model is saved as `soccer_final.pth` and can be used directly in `run.py`.
 

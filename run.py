@@ -12,8 +12,8 @@ MAX_STEPS = 5000 # maximum steps of the game
 
 def get_action_from_key_state(keys, is_p1=True):
     # keymaps for each player
-    keymap_p1 = { "up": pygame.K_w, "down": pygame.K_s, "left": pygame.K_a, "right": pygame.K_d }
-    keymap_p2 = { "up": pygame.K_UP, "down": pygame.K_DOWN, "left": pygame.K_LEFT, "right": pygame.K_RIGHT }
+    keymap_p1 = {"up": pygame.K_w, "down": pygame.K_s, "left": pygame.K_a, "right": pygame.K_d}
+    keymap_p2 = {"up": pygame.K_UP, "down": pygame.K_DOWN, "left": pygame.K_LEFT, "right": pygame.K_RIGHT}
     keymap = keymap_p1 if is_p1 else keymap_p2
     
     x = keys[keymap["right"]] - keys[keymap["left"]] # horizontal direction (-1 left, +1 right so right - left)
@@ -40,10 +40,7 @@ def load_agent(filepath, env, device):
     try:
         # load the model checkpoint safely
         checkpoint = torch.load(filepath, map_location=device)            
-        if 'agent_state_dict' in checkpoint:
-            agent.load_state_dict(checkpoint['agent_state_dict'])
-        else:
-            agent.load_state_dict(checkpoint)
+        agent.load_state_dict(checkpoint)
     except Exception as e:
         print(f"Failed to load model: {e}")
         sys.exit(1)

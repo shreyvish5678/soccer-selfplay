@@ -45,7 +45,7 @@ The final model is saved as `soccer_final.pth` and can be used directly in `run.
 python3 run.py
 ```
 
-Pretrained model link: [Dropbox](https://www.dropbox.com/scl/fi/32dc9xzsr8mnl572bizva/soccer_final.pth?rlkey=w6qpj41x1teeg2iywzenlazjt&st=dwdngww1&dl=0)
+Models at other timesteps: [Dropbox](https://www.dropbox.com/scl/fo/mq5j7lds7er7gku5ec5pv/AIZpQFxs3D9gKO_N0Yr3eEI?rlkey=ycpbn82p4cy0ryuor9ec3gyxu&st=kstgqiup&dl=0)
 
 ## Blog
 
